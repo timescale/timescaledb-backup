@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/docker/go-connections/nat"
@@ -29,7 +30,7 @@ const (
 	defaultDB       = "postgres"
 	defaultUser     = "postgres"
 	defaultPass     = "password"
-	defaultDumpDir	= "foo"
+	defaultDumpDir  = "test_dump"
 )
 
 func TestMain(m *testing.M) {
@@ -52,20 +53,65 @@ func TestBackupRestore(t *testing.T) {
 	restoredDBName := "backup_restore_restored"
 	setupOrigDB(t, origDBName, "public", "1.6.1")
 	createTestDB(t, restoredDBName)
-	config := util.Config{
-		DbURI=PGConnectURI(t, origDBName)
-		DumpDir=defaultDumpDir
-	}
-	util.CleanConfig(config)
-	dump.DoDump(config)
-	}
+	// setup dump config
+	dumpConfig := &util.Config{}
+	dumpConfig.DbURI = PGConnectURI(origDBName)
+	dumpConfig.DumpDir = defaultDumpDir
+	util.CleanConfig(dumpConfig)
+	// corresponding restore config
+	restoreConfig := &util.Config{}
+	restoreConfig.DbURI = PGConnectURI(restoredDBName)
+	restoreConfig.DumpDir = defaultDumpDir
+	util.CleanConfig(restoreConfig)
+
+	//make sure we remove the dumpDir at the end no matter what
+	defer os.RemoveAll(dumpConfig.DumpDir)
+	dump.DoDump(dumpConfig)
+	restore.DoRestore(restoreConfig)
+	confirmTablesCongruent(t, pgx.Identifier{"public"}, pgx.Identifier{"two_Partitions"}, dumpConfig.DbURI, restoreConfig.DbURI)
 	return
 }
 
-func setupOrigDB(t *testing.T, dbName string, tsSchema, tsVersion string) {
+func confirmTablesCongruent(t *testing.T, tableSchema pgx.Identifier, tableName pgx.Identifier, origURI string, restoredURI string) {
+
+	quotedTableSchema := tableSchema.Sanitize()
+	quotedTableName := tableName.Sanitize()
+
+	sql := fmt.Sprintf(`SELECT * FROM %s.%s AS t ORDER BY t`, quotedTableSchema, quotedTableName)
+	origConn := util.GetDBConn(context.Background(), origURI)
+	defer origConn.Close(context.Background())
+	restoredConn := util.GetDBConn(context.Background(), restoredURI)
+	defer restoredConn.Close(context.Background())
+
+	origRows, err := origConn.Query(context.Background(), sql)
+	if err != nil {
+		t.Fatal("Query failed on origDB: ", err)
+	}
+	defer origRows.Close()
+	restoredRows, err := restoredConn.Query(context.Background(), sql)
+	if err != nil {
+		t.Fatal("Query failed on restoredDB: ", err)
+	}
+	defer restoredRows.Close()
+	var rowCount int
+	for origRows.Next() {
+		rowCount++
+		if !restoredRows.Next() {
+			t.Fatalf("Restored table %s.%s has too few rows", quotedTableSchema, quotedTableName)
+		}
+		if !reflect.DeepEqual(origRows.RawValues(), restoredRows.RawValues()) {
+			t.Fatalf("Restored table %s.%s has element unequal to original row: %d", quotedTableSchema, quotedTableName, rowCount)
+		}
+	}
+	if restoredRows.Next() {
+		t.Fatalf("Restored table %s.%s has too many rows", quotedTableSchema, quotedTableName)
+	}
+}
+
+func setupOrigDB(t *testing.T, dbName string, tsSchema string, tsVersion string) {
 
 	createTestDB(t, dbName)
-	dbURI := PGConnectURI(t, dbName)
+	dbURI := PGConnectURI(dbName)
 	util.CreateTimescaleAtVer(context.Background(), dbURI, tsSchema, tsVersion)
 	conn := util.GetDBConn(context.Background(), dbURI)
 	defer conn.Close(context.Background())
@@ -103,7 +149,7 @@ func setupOrigDB(t *testing.T, dbName string, tsSchema, tsVersion string) {
 
 }
 
-func PGConnectURI(t *testing.T, dbName string) string {
+func PGConnectURI(dbName string) string {
 	template := "postgres://%s:%s@%s:%d/%s"
 	return fmt.Sprintf(template, defaultUser, defaultPass, pgHost, pgPort.Int(), dbName)
 }
@@ -143,7 +189,7 @@ func createTestDB(t *testing.T, DBName string) {
 	if len(*database) == 0 {
 		t.Skip()
 	}
-	conn := util.GetDBConn(context.Background(), PGConnectURI(t, defaultDB))
+	conn := util.GetDBConn(context.Background(), PGConnectURI(defaultDB))
 	defer conn.Close(context.Background())
 
 	mustExec(t, conn, fmt.Sprintf("DROP DATABASE IF EXISTS %s", DBName))
