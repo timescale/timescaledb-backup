@@ -3,8 +3,8 @@ package restore
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 
@@ -13,20 +13,27 @@ import (
 )
 
 // DoRestore takes a config and performs a pg_restore with the proper wrappings for Timescale
-func DoRestore(cf *util.Config) int {
+func DoRestore(cf *util.Config) error {
 	restorePath, err := exec.LookPath("pg_restore")
 	if err != nil {
-		log.Fatalf("could not find pg_restore")
+		return errors.New("could not find pg_restore")
 	}
 	getver := exec.Command(restorePath, "--version")
 	out, err := getver.CombinedOutput()
 	if err != nil {
-		log.Fatalf("Failed to get version of pg_restore: %s\n", err)
+		return fmt.Errorf("failed to get version of pg_restore: %w", err)
 	}
 	fmt.Printf("pg_restore version: %s\n", string(out))
 
-	tsInfo := parseInfoFile(cf)
-	preRestoreTimescale(cf.DbURI, tsInfo)
+	tsInfo, err := parseInfoFile(cf)
+	if err != nil {
+		return err
+	}
+	err = preRestoreTimescale(cf.DbURI, tsInfo)
+	if err != nil {
+		return err
+	}
+	//How does error handling in deferred things work?
 	defer postRestoreTimescale(cf.DbURI, tsInfo)
 
 	dump := exec.Command(restorePath)
@@ -40,59 +47,68 @@ func DoRestore(cf *util.Config) int {
 	dump.Stderr = os.Stderr
 	err = dump.Run()
 	if err != nil {
-		log.Printf("pg_restore run failed with: %s\n", err)
-		return 1
+		return fmt.Errorf("pg_restore run failed with: %w", err)
 	}
-	return 0
+	return err
 }
 
-func parseInfoFile(cf *util.Config) util.TsInfo {
+func parseInfoFile(cf *util.Config) (util.TsInfo, error) {
+	var tsInfo util.TsInfo
 	file, err := os.Open(cf.TsInfoFileName)
 	if err != nil {
-		log.Fatalf("Failed to open version file: %s,\n", err)
+		return tsInfo, fmt.Errorf("failed to open version file: %w", err)
 	}
 	defer file.Close()
 	decoder := json.NewDecoder(file)
-	var tsInfo util.TsInfo
+
 	err = decoder.Decode(&tsInfo)
 	if err != nil {
-		log.Fatalf("Failed to decode tsInfo JSON: %s\n", err)
+		return tsInfo, fmt.Errorf("failed to decode tsInfo JSON: %w", err)
 	}
-	return tsInfo
+	return tsInfo, err
 }
 
-func preRestoreTimescale(dbURI string, tsInfo util.TsInfo) {
+func preRestoreTimescale(dbURI string, tsInfo util.TsInfo) error {
 
 	// First create the extension at the correct version in the correct schema
-	util.CreateTimescaleAtVer(context.Background(), dbURI, tsInfo.TsSchema, tsInfo.TsVersion)
-	conn := util.GetDBConn(context.Background(), dbURI)
+	err := util.CreateTimescaleAtVer(context.Background(), dbURI, tsInfo.TsSchema, tsInfo.TsVersion)
+	if err != nil {
+		return err
+	}
+	conn, err := util.GetDBConn(context.Background(), dbURI)
+	if err != nil {
+		return err
+	}
 	defer conn.Close(context.Background())
 	// Now run our pre-restoring function
 	var pr bool
-	err := conn.QueryRow(context.Background(), fmt.Sprintf("SELECT %s.timescaledb_pre_restore() ", tsInfo.TsSchema)).Scan(&pr)
+	err = conn.QueryRow(context.Background(), fmt.Sprintf("SELECT %s.timescaledb_pre_restore() ", tsInfo.TsSchema)).Scan(&pr)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	if !pr {
-		log.Fatal("Pre restore function failed to run")
+		return errors.New("TimescaleDB pre restore function failed to run")
 	}
 
-	return
+	return err
 }
 
-func postRestoreTimescale(dbURI string, tsInfo util.TsInfo) {
+func postRestoreTimescale(dbURI string, tsInfo util.TsInfo) error {
 
-	conn := util.GetDBConn(context.Background(), dbURI)
+	conn, err := util.GetDBConn(context.Background(), dbURI)
+	if err != nil {
+		return err
+	}
 	defer conn.Close(context.Background())
 
 	// Now run our post-restoring function
 	var pr bool
-	err := conn.QueryRow(context.Background(), fmt.Sprintf("SELECT %s.timescaledb_post_restore() ", tsInfo.TsSchema)).Scan(&pr)
+	err = conn.QueryRow(context.Background(), fmt.Sprintf("SELECT %s.timescaledb_post_restore() ", tsInfo.TsSchema)).Scan(&pr)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	if !pr {
-		log.Fatal("Post restore function failed")
+		return errors.New("post restore function failed")
 	}
 
 	// Confirm that no one pulled a fast one on us, and that we're at the right extension version
@@ -100,12 +116,12 @@ func postRestoreTimescale(dbURI string, tsInfo util.TsInfo) {
 	err = conn.QueryRow(context.Background(), "SELECT e.extversion, n.nspname FROM pg_extension e INNER JOIN pg_namespace n ON e.extnamespace = n.oid WHERE e.extname='timescaledb'").Scan(&info.TsVersion, &info.TsSchema)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			log.Fatal("Could not confirm creation of TimescaleDB extension")
+			return errors.New("could not confirm creation of TimescaleDB extension")
 		}
-		log.Fatal(err)
+		return err
 	}
 	if info.TsSchema != tsInfo.TsSchema || info.TsVersion != tsInfo.TsVersion {
-		log.Fatal("TimescaleDB extension created in incorrect schema or at incorrect version, please drop the extension and restart the restore.")
+		return errors.New("TimescaleDB extension created in incorrect schema or at incorrect version, please drop the extension and restart the restore")
 	}
-	return
+	return err
 }

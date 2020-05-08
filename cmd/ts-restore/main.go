@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"log"
 
 	"github.com/timescale/ts-dump-restore/pkg/restore"
 	"github.com/timescale/ts-dump-restore/pkg/util"
@@ -9,8 +10,15 @@ import (
 
 func main() {
 	config := &util.Config{}
-	util.RegisterConfigFlags(config)
+	config = util.RegisterConfigFlags(config)
+
 	flag.Parse()
-	util.CleanConfig(config)
-	restore.DoRestore(config)
+	config, err := util.CleanConfig(config)
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = restore.DoRestore(config)
+	if err != nil {
+		log.Fatal(err)
+	}
 }

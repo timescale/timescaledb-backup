@@ -2,9 +2,9 @@ package util
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"path/filepath"
 
 	"github.com/jackc/pgx/v4"
@@ -33,61 +33,71 @@ func RegisterConfigFlags(cf *Config) *Config {
 }
 
 //CleanConfig cleans and standardizes user input as well as enriching the config with derived values
-func CleanConfig(cf *Config) *Config {
+func CleanConfig(cf *Config) (*Config, error) {
 	dd, err := filepath.Abs(cf.DumpDir)
 	if err != nil {
-		log.Fatal(err)
+		return cf, err
 	}
 
 	cf.DumpDir = dd
 	cf.PgDumpDir = filepath.Join(cf.DumpDir, "pgdump")
 	cf.TsInfoFileName = filepath.Join(cf.DumpDir, "timescaleVersionInfo.json")
-	return cf
+	return cf, err
 }
 
 //GetDBConn returns a pgx Conn from a dbURI
-func GetDBConn(dbContext context.Context, dbURI string) *pgx.Conn {
+func GetDBConn(dbContext context.Context, dbURI string) (*pgx.Conn, error) {
 	config, err := pgx.ParseConfig(dbURI)
 	if err != nil {
-		log.Fatalf("invalid connection string: %s\n", err)
+		return nil, fmt.Errorf("invalid connection string: %w", err)
 	}
 	conn, err := pgx.ConnectConfig(dbContext, config)
 	if err != nil {
-		log.Fatalf("invalid connection string: %s\n", err)
+		return nil, err
 	}
-	return conn
+	return conn, err
 }
 
 //CreateTimescaleAtVer takes in a dbURI, a Timescale version and schema and
 // cleans out any version of the extension that exists, then creates the version
 // we want in the correct schema etc.
-func CreateTimescaleAtVer(dbContext context.Context, dbURI string, targetSchema string, targetVersion string) {
-	conn := GetDBConn(dbContext, dbURI)
-	//First connect and clean out any old versions
-	_, err := conn.Exec(dbContext, `DROP EXTENSION IF EXISTS timescaledb`)
+func CreateTimescaleAtVer(dbContext context.Context, dbURI string, targetSchema string, targetVersion string) error {
+	conn, err := GetDBConn(dbContext, dbURI)
 	if err != nil {
-		log.Fatal("Error dropping old extension version: ", err)
+		return err
 	}
-	// Now have to close and reconnect to prevent loading different versions in same backend.
+	defer conn.Close(dbContext)
+	//First connect and clean out any old versions We drop the extension without
+	//cascade so we will error if there are any dependencies, this is mostly
+	//there in cases where the extension is created due to the template db
+	_, err = conn.Exec(dbContext, `DROP EXTENSION IF EXISTS timescaledb`)
+	if err != nil {
+		return fmt.Errorf("Error dropping old extension version: %w", err)
+	}
+
+	// Need a new connection now to prevent odd loading issues with different ext versions
 	conn.Close(dbContext)
-	conn = GetDBConn(dbContext, dbURI)
+	conn, err = GetDBConn(dbContext, dbURI)
+	if err != nil {
+		return err
+	}
 	defer conn.Close(dbContext)
 	stmnt := fmt.Sprintf("CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA %s VERSION '%s'", targetSchema, targetVersion)
-	fmt.Println(stmnt)
 	_, err = conn.Exec(dbContext, stmnt)
 	if err != nil {
-		log.Fatal("Error creating extension in correct schema and at correct version: ", err)
+		return fmt.Errorf("Error creating extension in correct schema and at correct version: %w", err)
 	}
 	// Confirm that worked correctly
 	info := TsInfo{}
 	err = conn.QueryRow(context.Background(), "SELECT e.extversion, n.nspname FROM pg_extension e INNER JOIN pg_namespace n on e.extnamespace = n.oid WHERE e.extname='timescaledb'").Scan(&info.TsVersion, &info.TsSchema)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			log.Fatal("Could not confirm creation of TimescaleDB extension")
+			return errors.New("Could not confirm creation of TimescaleDB extension")
 		}
-		log.Fatal(err)
+		return err
 	}
 	if info.TsSchema != targetSchema || info.TsVersion != targetVersion {
-		log.Fatal("TimescaleDB extension created in incorrect schema or at incorrect version, please drop the extension and restart the restore.")
+		return errors.New("TimescaleDB extension created in incorrect schema or at incorrect version, please drop the extension and restart the restore")
 	}
+	return err
 }
