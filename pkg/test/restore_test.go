@@ -78,9 +78,15 @@ func confirmTablesCongruent(t *testing.T, tableSchema pgx.Identifier, tableName 
 	quotedTableName := tableName.Sanitize()
 
 	sql := fmt.Sprintf(`SELECT * FROM %s.%s AS t ORDER BY t`, quotedTableSchema, quotedTableName)
-	origConn := util.GetDBConn(context.Background(), origURI)
+	origConn, err := util.GetDBConn(context.Background(), origURI)
+	if err != nil {
+		t.Fatal("Unable to connect to dump db: ", err)
+	}
 	defer origConn.Close(context.Background())
-	restoredConn := util.GetDBConn(context.Background(), restoredURI)
+	restoredConn, err := util.GetDBConn(context.Background(), restoredURI)
+	if err != nil {
+		t.Fatal("Unable to connect to restore db: ", err)
+	}
 	defer restoredConn.Close(context.Background())
 
 	origRows, err := origConn.Query(context.Background(), sql)
@@ -112,8 +118,15 @@ func setupOrigDB(t *testing.T, dbName string, tsSchema string, tsVersion string)
 
 	createTestDB(t, dbName)
 	dbURI := PGConnectURI(dbName)
-	util.CreateTimescaleAtVer(context.Background(), dbURI, tsSchema, tsVersion)
-	conn := util.GetDBConn(context.Background(), dbURI)
+	err := util.CreateTimescaleAtVer(context.Background(), dbURI, tsSchema, tsVersion)
+	if err != nil {
+		//in tests errors still are fatal (if unexpected) or is there a better pattern?
+		t.Fatal(err)
+	}
+	conn, err := util.GetDBConn(context.Background(), dbURI)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer conn.Close(context.Background())
 
 	// basically re-creating the pg_dump test from timescaledb repo here.
@@ -189,7 +202,10 @@ func createTestDB(t *testing.T, DBName string) {
 	if len(*database) == 0 {
 		t.Skip()
 	}
-	conn := util.GetDBConn(context.Background(), PGConnectURI(defaultDB))
+	conn, err := util.GetDBConn(context.Background(), PGConnectURI(defaultDB))
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer conn.Close(context.Background())
 
 	mustExec(t, conn, fmt.Sprintf("DROP DATABASE IF EXISTS %s", DBName))
