@@ -31,7 +31,7 @@ type TsInfo struct {
 func RegisterCommonConfigFlags(cf *Config) *Config {
 	flag.StringVar(&cf.DbURI, "db-URI", "", "the PostgreSQL URI in postgresql://[user[:password]@][netloc][:port][,...][/dbname][?param1=value1&...] format")
 	flag.StringVar(&cf.DumpDir, "dump-dir", "", "the directory to place the dump in or to restore from")
-	flag.IntVar(&cf.Jobs, "jobs", 4, "specifies whether parallel jobs will be used, defaults to 4")
+	flag.IntVar(&cf.Jobs, "jobs", 4, "specifies whether parallel jobs will be used, defaults to 4, set to 0 to disable parallelism")
 	return cf
 }
 

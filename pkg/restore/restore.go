@@ -41,48 +41,41 @@ func DoRestore(cf *util.Config) error {
 		baseArgs = append(baseArgs, "--verbose")
 	}
 	// Now just the pre-data section
-	preDataArgs := append(baseArgs, "--section=pre-data")
-
-	err = runRestore(restorePath, cf.PgDumpDir, preDataArgs)
+	err = runRestore(restorePath, cf.PgDumpDir, baseArgs, "--section=pre-data")
 	if err != nil {
 		return fmt.Errorf("pg_restore run failed in pre-data section: %w", err)
 	}
 
 	//Now data for just the _timescaledb_catalog schema
-	catalogArgs := append(baseArgs, "--section=data", "--schema=_timescaledb_catalog")
-	err = runRestore(restorePath, cf.PgDumpDir, catalogArgs)
+	err = runRestore(restorePath, cf.PgDumpDir, baseArgs, "--section=data", "--schema=_timescaledb_catalog")
 	if err != nil {
 		return fmt.Errorf("pg_restore run failed while restoring _timescaledb_catalog: %w", err)
 	}
-
-	//Now the data for everything else, first time to add our parallel jobs
-	dataArgs := append(baseArgs, "--section=data", "--exclude-schema=_timescaledb_catalog")
+	// now we can add parallel jobs to baseArgs for the rest of the process, if we have them.
 	if cf.Jobs > 0 {
-		dataArgs = append(dataArgs, fmt.Sprintf("--jobs=%d", cf.Jobs))
+		baseArgs = append(baseArgs, fmt.Sprintf("--jobs=%d", cf.Jobs))
 	}
-	err = runRestore(restorePath, cf.PgDumpDir, dataArgs)
+	//Now the data for everything else
+	err = runRestore(restorePath, cf.PgDumpDir, baseArgs, "--section=data", "--exclude-schema=_timescaledb_catalog")
 	if err != nil {
 		return fmt.Errorf("pg_restore run failed while restoring user data: %w", err)
 	}
 
 	//Now the full post-data run, which should also be in parallel
-	postDataArgs := append(baseArgs, "--section=post-data")
-	if cf.Jobs > 0 {
-		postDataArgs = append(postDataArgs, fmt.Sprintf("--jobs=%d", cf.Jobs))
-	}
-	err = runRestore(restorePath, cf.PgDumpDir, postDataArgs)
+	err = runRestore(restorePath, cf.PgDumpDir, baseArgs, "--section=post-data")
 	if err != nil {
 		return fmt.Errorf("pg_restore run failed during post-data step: %w", err)
 	}
 	return err
 }
 
-func runRestore(restorePath string, dumpDir string, args []string) error {
+func runRestore(restorePath string, dumpDir string, baseArgs []string, addlArgs ...string) error {
 	restore := exec.Command(restorePath)
 	restore.Env = append(os.Environ()) //may use this to set other environmental vars
 	restore.Stdout = os.Stdout
 	restore.Stderr = os.Stderr
-	restore.Args = append(restore.Args, args...)
+	restore.Args = append(restore.Args, baseArgs...)
+	restore.Args = append(restore.Args, addlArgs...)
 	restore.Args = append(restore.Args, dumpDir) // the location of the dump has to be the last argument
 	return restore.Run()
 }

@@ -35,14 +35,20 @@ func DoDump(cf *util.Config) error {
 	encoder := json.NewEncoder(file)
 	err = encoder.Encode(&tsInfo)
 	if err != nil {
-		return fmt.Errorf("Error writing timescale info %w", err)
+		return fmt.Errorf("Error writing Timescale info %w", err)
 	}
 
 	dump := exec.Command(dumpPath)
 	dump.Args = append(dump.Args,
-		string(cf.DbURI),
+		fmt.Sprintf("--dbname=%s", cf.DbURI),
 		"--format=directory",
 		fmt.Sprintf("--file=%s", cf.PgDumpDir))
+	if cf.Verbose {
+		dump.Args = append(dump.Args, "--verbose")
+	}
+	if cf.Jobs > 0 {
+		dump.Args = append(dump.Args, fmt.Sprintf("--jobs=%d", cf.Jobs))
+	}
 	dump.Stdout = os.Stdout
 	dump.Stderr = os.Stderr
 	err = dump.Run()

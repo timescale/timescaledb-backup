@@ -30,7 +30,6 @@ const (
 	defaultDB       = "postgres"
 	defaultUser     = "postgres"
 	defaultPass     = "password"
-	defaultDumpDir  = "test_dump"
 )
 
 func TestMain(m *testing.M) {
@@ -49,6 +48,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestBackupRestore(t *testing.T) {
+	t.Parallel()
 	origDBName := "backup_restore_orig"
 	restoredDBName := "backup_restore_restored"
 	setupOrigDB(t, origDBName, "public", "1.6.1")
@@ -56,14 +56,51 @@ func TestBackupRestore(t *testing.T) {
 	// setup dump config
 	dumpConfig := &util.Config{}
 	dumpConfig.DbURI = PGConnectURI(origDBName)
-	dumpConfig.DumpDir = defaultDumpDir
+	dumpConfig.DumpDir = origDBName
+	dumpConfig.Verbose = false //default settings
+	dumpConfig.Jobs = 4
 	util.CleanConfig(dumpConfig)
 	// corresponding restore config
 	restoreConfig := &util.Config{}
 	restoreConfig.DbURI = PGConnectURI(restoredDBName)
-	restoreConfig.DumpDir = defaultDumpDir
-	restoreConfig.Verbose = true
+	restoreConfig.DumpDir = origDBName
+	restoreConfig.Verbose = true //default settings
 	restoreConfig.Jobs = 4
+	util.CleanConfig(restoreConfig)
+
+	//make sure we remove the dumpDir at the end no matter what
+	defer os.RemoveAll(dumpConfig.DumpDir)
+	err := dump.DoDump(dumpConfig)
+	if err != nil {
+		t.Fatal("Failed on restore: ", err)
+	}
+	err = restore.DoRestore(restoreConfig)
+	if err != nil {
+		t.Fatal("Failed on restore: ", err)
+	}
+	confirmTablesCongruent(t, pgx.Identifier{"public"}, pgx.Identifier{"two_Partitions"}, dumpConfig.DbURI, restoreConfig.DbURI)
+	return
+}
+
+func TestNonParallelBackupRestore(t *testing.T) {
+	t.Parallel()
+	origDBName := "np_backup_restore_orig"
+	restoredDBName := "np_backup_restore_restored"
+	setupOrigDB(t, origDBName, "public", "1.6.1")
+	createTestDB(t, restoredDBName)
+	// setup dump config
+	dumpConfig := &util.Config{}
+	dumpConfig.DbURI = PGConnectURI(origDBName)
+	dumpConfig.DumpDir = origDBName
+	dumpConfig.Verbose = false //default settings
+	dumpConfig.Jobs = 0
+	util.CleanConfig(dumpConfig)
+	// corresponding restore config
+	restoreConfig := &util.Config{}
+	restoreConfig.DbURI = PGConnectURI(restoredDBName)
+	restoreConfig.DumpDir = origDBName
+	restoreConfig.Verbose = true //default settings
+	restoreConfig.Jobs = 0
 	util.CleanConfig(restoreConfig)
 
 	//make sure we remove the dumpDir at the end no matter what
