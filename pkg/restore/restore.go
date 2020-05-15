@@ -14,17 +14,6 @@ import (
 
 // DoRestore takes a config and performs a pg_restore with the proper wrappings for Timescale
 func DoRestore(cf *util.Config) error {
-	restorePath, err := exec.LookPath("pg_restore")
-	if err != nil {
-		return errors.New("could not find pg_restore")
-	}
-	getver := exec.Command(restorePath, "--version")
-	out, err := getver.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to get version of pg_restore: %w", err)
-	}
-	fmt.Printf("pg_restore version: %s\n", string(out))
-
 	tsInfo, err := parseInfoFile(cf)
 	if err != nil {
 		return err
@@ -33,23 +22,83 @@ func DoRestore(cf *util.Config) error {
 	if err != nil {
 		return err
 	}
-	//How does error handling in deferred things work?
-	defer postRestoreTimescale(cf.DbURI, tsInfo)
 
-	dump := exec.Command(restorePath)
-	dump.Env = append(os.Environ()) //may use this to set other environmental vars
-	dump.Args = append(dump.Args,
-		fmt.Sprintf("--dbname=%s", cf.DbURI),
-		"--format=directory",
-		"--verbose",
-		cf.PgDumpDir) //final argument to pg_restore should be the filename to restore from. Bad UI...
-	dump.Stdout = os.Stdout
-	dump.Stderr = os.Stderr
-	err = dump.Run()
+	defer postRestoreTimescale(cf.DbURI, tsInfo)
+	restorePath, err := getRestoreVersion()
 	if err != nil {
-		return fmt.Errorf("pg_restore run failed with: %w", err)
+		return err
+	}
+
+	//In order to support parallel restores, we have to first do a pre-data
+	//restore, then restore only the data for the _timescaledb_catalog schema,
+	//which has circular foreign key constraints and can't be restored in
+	//parallel, then restore (in parallel) the data for everything else and the
+	//post-data (also in parallel, this includes building indexes and the like
+	//so it can be significantly faster that way)
+	var baseArgs = []string{fmt.Sprintf("--dbname=%s", cf.DbURI), "--format=directory"}
+
+	if cf.Verbose {
+		baseArgs = append(baseArgs, "--verbose")
+	}
+	// Now just the pre-data section
+	preDataArgs := append(baseArgs, "--section=pre-data")
+
+	err = runRestore(restorePath, cf.PgDumpDir, preDataArgs)
+	if err != nil {
+		return fmt.Errorf("pg_restore run failed in pre-data section: %w", err)
+	}
+
+	//Now data for just the _timescaledb_catalog schema
+	catalogArgs := append(baseArgs, "--section=data", "--schema=_timescaledb_catalog")
+	err = runRestore(restorePath, cf.PgDumpDir, catalogArgs)
+	if err != nil {
+		return fmt.Errorf("pg_restore run failed while restoring _timescaledb_catalog: %w", err)
+	}
+
+	//Now the data for everything else, first time to add our parallel jobs
+	dataArgs := append(baseArgs, "--section=data", "--exclude-schema=_timescaledb_catalog")
+	if cf.Jobs > 0 {
+		dataArgs = append(dataArgs, fmt.Sprintf("--jobs=%d", cf.Jobs))
+	}
+	err = runRestore(restorePath, cf.PgDumpDir, dataArgs)
+	if err != nil {
+		return fmt.Errorf("pg_restore run failed while restoring user data: %w", err)
+	}
+
+	//Now the full post-data run, which should also be in parallel
+	postDataArgs := append(baseArgs, "--section=post-data")
+	if cf.Jobs > 0 {
+		postDataArgs = append(postDataArgs, fmt.Sprintf("--jobs=%d", cf.Jobs))
+	}
+	err = runRestore(restorePath, cf.PgDumpDir, postDataArgs)
+	if err != nil {
+		return fmt.Errorf("pg_restore run failed during post-data step: %w", err)
 	}
 	return err
+}
+
+func runRestore(restorePath string, dumpDir string, args []string) error {
+	restore := exec.Command(restorePath)
+	restore.Env = append(os.Environ()) //may use this to set other environmental vars
+	restore.Stdout = os.Stdout
+	restore.Stderr = os.Stderr
+	restore.Args = append(restore.Args, args...)
+	restore.Args = append(restore.Args, dumpDir) // the location of the dump has to be the last argument
+	return restore.Run()
+}
+
+func getRestoreVersion() (string, error) {
+	restorePath, err := exec.LookPath("pg_restore")
+	if err != nil {
+		return restorePath, errors.New("could not find pg_restore")
+	}
+	getver := exec.Command(restorePath, "--version")
+	out, err := getver.CombinedOutput()
+	if err != nil {
+		return restorePath, fmt.Errorf("failed to get version of pg_restore: %w", err)
+	}
+	fmt.Printf("pg_restore version: %s\n", string(out))
+	return restorePath, err
 }
 
 func parseInfoFile(cf *util.Config) (util.TsInfo, error) {

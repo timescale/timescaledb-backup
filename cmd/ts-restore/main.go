@@ -10,7 +10,7 @@ import (
 
 func main() {
 	config := &util.Config{}
-	config = util.RegisterConfigFlags(config)
+	config = util.RegisterCommonConfigFlags(config)
 
 	flag.Parse()
 	config, err := util.CleanConfig(config)

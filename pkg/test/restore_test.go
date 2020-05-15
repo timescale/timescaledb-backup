@@ -62,12 +62,20 @@ func TestBackupRestore(t *testing.T) {
 	restoreConfig := &util.Config{}
 	restoreConfig.DbURI = PGConnectURI(restoredDBName)
 	restoreConfig.DumpDir = defaultDumpDir
+	restoreConfig.Verbose = true
+	restoreConfig.Jobs = 4
 	util.CleanConfig(restoreConfig)
 
 	//make sure we remove the dumpDir at the end no matter what
 	defer os.RemoveAll(dumpConfig.DumpDir)
-	dump.DoDump(dumpConfig)
-	restore.DoRestore(restoreConfig)
+	err := dump.DoDump(dumpConfig)
+	if err != nil {
+		t.Fatal("Failed on restore: ", err)
+	}
+	err = restore.DoRestore(restoreConfig)
+	if err != nil {
+		t.Fatal("Failed on restore: ", err)
+	}
 	confirmTablesCongruent(t, pgx.Identifier{"public"}, pgx.Identifier{"two_Partitions"}, dumpConfig.DbURI, restoreConfig.DbURI)
 	return
 }
