@@ -16,6 +16,8 @@ type Config struct {
 	DumpDir        string
 	PgDumpDir      string
 	TsInfoFileName string
+	Verbose        bool
+	Jobs           int
 }
 
 //TsInfo holds information about the Timescale installation
@@ -25,10 +27,11 @@ type TsInfo struct {
 	TsSchema      string
 }
 
-//RegisterConfigFlags registers user input flags in the config struct
-func RegisterConfigFlags(cf *Config) *Config {
-	flag.StringVar(&cf.DbURI, "db-URI", "", "The PostgreSQL URI in postgresql://[user[:password]@][netloc][:port][,...][/dbname][?param1=value1&...] format")
-	flag.StringVar(&cf.DumpDir, "dump-dir", "", "The directory to place the dump in or to restore from")
+//RegisterCommonConfigFlags registers user input flags common to both dump and restore (incl defaults) in the config struct
+func RegisterCommonConfigFlags(cf *Config) *Config {
+	flag.StringVar(&cf.DbURI, "db-URI", "", "the PostgreSQL URI in postgresql://[user[:password]@][netloc][:port][,...][/dbname][?param1=value1&...] format")
+	flag.StringVar(&cf.DumpDir, "dump-dir", "", "the directory to place the dump in or to restore from")
+	flag.IntVar(&cf.Jobs, "jobs", 4, "specifies whether parallel jobs will be used, defaults to 4, set to 0 to disable parallelism")
 	return cf
 }
 

@@ -10,7 +10,9 @@ import (
 
 func main() {
 	config := &util.Config{}
-	config = util.RegisterConfigFlags(config)
+	config = util.RegisterCommonConfigFlags(config)
+	// for restore we want to default to verbose output, it gives good information about how the restore is proceeding
+	flag.BoolVar(&config.Verbose, "verbose", true, "specifies whether verbose output is requested, default true")
 
 	flag.Parse()
 	config, err := util.CleanConfig(config)

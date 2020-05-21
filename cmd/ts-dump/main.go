@@ -10,8 +10,9 @@ import (
 
 func main() {
 	config := &util.Config{}
-	config = util.RegisterConfigFlags(config)
-
+	config = util.RegisterCommonConfigFlags(config)
+	// for dump we want to default to non-verbose output, as it is a bit too verbose
+	flag.BoolVar(&config.Verbose, "verbose", false, "specifies whether verbose output is requested, default false")
 	flag.Parse()
 	config, err := util.CleanConfig(config)
 	if err != nil {
