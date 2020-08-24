@@ -36,7 +36,7 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	ctx := context.Background()
 	if !testing.Short() && *useDocker {
-		container, err := startContainer(ctx)
+		container, err := startContainer(ctx, "timescale/timescaledb:latest-pg11")
 		if err != nil {
 			fmt.Println("Error setting up container", err)
 			os.Exit(1)
@@ -201,9 +201,11 @@ func setupOrigDB(t *testing.T, dbName string, tsSchema string, tsVersion string)
 		(1257987600000000000, 'dev1', 1.5, 1),
 		(1257987600000000000, 'dev1', 1.5, 2),
 		(1257894000000000000, 'dev2', 1.5, 1),
-		(1257894002000000000, 'dev1', 2.5, 3);`)
-	mustExec(t, conn, `INSERT INTO "two_Partitions"("timeCustom", device_id, series_0, series_1) VALUES
+		(1257894002000000000, 'dev1', 2.5, 3)`)
+	mustExec(t, conn, `INSERT INTO public."two_Partitions"("timeCustom", device_id, series_0, series_1) VALUES
 		(1257894000000000000, 'dev2', 1.5, 2)`)
+	mustExec(t, conn, `ALTER TABLE public."two_Partitions" SET (timescaledb.compress=true)`)
+	mustExec(t, conn, `SELECT compress_chunk((SELECT chunk FROM show_chunks('public."two_Partitions"'::regclass) c (chunk) LIMIT 1))`)
 
 }
 
@@ -212,10 +214,10 @@ func PGConnectURI(dbName string) string {
 	return fmt.Sprintf(template, defaultUser, defaultPass, pgHost, pgPort.Int(), dbName)
 }
 
-func startContainer(ctx context.Context) (testcontainers.Container, error) {
+func startContainer(ctx context.Context, image string) (testcontainers.Container, error) {
 	containerPort := nat.Port("5432/tcp")
 	req := testcontainers.ContainerRequest{
-		Image:        "timescale/timescaledb:latest-pg11",
+		Image:        image,
 		ExposedPorts: []string{string(containerPort)},
 		WaitingFor:   wait.NewHostPortStrategy(containerPort),
 		Env: map[string]string{
