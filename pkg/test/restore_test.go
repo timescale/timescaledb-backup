@@ -19,10 +19,14 @@ import (
 )
 
 var (
-	database           = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
-	useDocker          = flag.Bool("use-docker", true, "start database using a docker container")
-	pgHost             = "localhost"
-	pgPort    nat.Port = "5432/tcp"
+	database              = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
+	useDocker             = flag.Bool("use-docker", true, "start database using a docker container")
+	dumpImage             = flag.String("dump-image", "timescale/timescaledb:latest-pg11", "specifies the docker image for the db to dump from")
+	restoreImage          = flag.String("restore-image", "timescale/timescaledb:latest-pg12", "specifies the image for the db to restore to")
+	pgPort       nat.Port = "5432/tcp"
+	dumpHost              = "localhost"
+	restoreHost           = "localhost"
+	tsVersion             = flag.String("timescale-version", "1.7.1", "the version of Timescale to test when dumping/restoring")
 )
 
 const (
@@ -35,72 +39,60 @@ const (
 func TestMain(m *testing.M) {
 	flag.Parse()
 	ctx := context.Background()
-	if !testing.Short() && *useDocker {
-		container, err := startContainer(ctx, "timescale/timescaledb:latest-pg11")
-		if err != nil {
-			fmt.Println("Error setting up container", err)
-			os.Exit(1)
-		}
-		defer container.Terminate(ctx)
+	dumpContainer, err := startContainer(ctx, *dumpImage)
+	if err != nil {
+		fmt.Println("Error setting up container", err)
+		os.Exit(1)
+	}
+	defer dumpContainer.Terminate(ctx)
+	dumpHost, err = dumpContainer.Host(ctx)
+	if err != nil {
+		fmt.Println("error getting db host from container")
+		os.Exit(1)
+	}
+	restoreContainer, err := startContainer(ctx, *restoreImage)
+	if err != nil {
+		fmt.Println("Error setting up container", err)
+		os.Exit(1)
+	}
+	defer restoreContainer.Terminate(ctx)
+	restoreHost, err = restoreContainer.Host(ctx)
+	if err != nil {
+		fmt.Println("error getting db host from container")
+		os.Exit(1)
 	}
 	code := m.Run()
 	os.Exit(code)
 }
 
-func TestBackupRestore(t *testing.T) {
+func TestParallelBackupRestore(t *testing.T) {
 	t.Parallel()
-	origDBName := "backup_restore_orig"
-	restoredDBName := "backup_restore_restored"
-	setupOrigDB(t, origDBName, "public", "1.6.1")
-	createTestDB(t, restoredDBName)
-	// setup dump config
-	dumpConfig := &util.Config{}
-	dumpConfig.DbURI = PGConnectURI(origDBName)
-	dumpConfig.DumpDir = origDBName
-	dumpConfig.Verbose = false //default settings
-	dumpConfig.Jobs = 4
-	util.CleanConfig(dumpConfig)
-	// corresponding restore config
-	restoreConfig := &util.Config{}
-	restoreConfig.DbURI = PGConnectURI(restoredDBName)
-	restoreConfig.DumpDir = origDBName
-	restoreConfig.Verbose = true //default settings
-	restoreConfig.Jobs = 4
-	util.CleanConfig(restoreConfig)
-
-	//make sure we remove the dumpDir at the end no matter what
-	defer os.RemoveAll(dumpConfig.DumpDir)
-	err := dump.DoDump(dumpConfig)
-	if err != nil {
-		t.Fatal("Failed on restore: ", err)
-	}
-	err = restore.DoRestore(restoreConfig)
-	if err != nil {
-		t.Fatal("Failed on restore: ", err)
-	}
-	confirmTablesCongruent(t, pgx.Identifier{"public"}, pgx.Identifier{"two_Partitions"}, dumpConfig.DbURI, restoreConfig.DbURI)
-	return
+	BackupRestoreTest(t, "parallel_orig", "parallel_restored", 4)
 }
 
 func TestNonParallelBackupRestore(t *testing.T) {
 	t.Parallel()
-	origDBName := "np_backup_restore_orig"
-	restoredDBName := "np_backup_restore_restored"
-	setupOrigDB(t, origDBName, "public", "1.6.1")
-	createTestDB(t, restoredDBName)
+	BackupRestoreTest(t, "non_parallel_orig", "non_parallel_restored", 0)
+}
+
+func BackupRestoreTest(t *testing.T, origDBName string, restoredDBName string, numJobs int) {
+
+	setupOrigDB(t, origDBName, dumpHost, "public", *tsVersion)
 	// setup dump config
 	dumpConfig := &util.Config{}
-	dumpConfig.DbURI = PGConnectURI(origDBName)
+	dumpConfig.DbURI = PGConnectURI(origDBName, dumpHost)
 	dumpConfig.DumpDir = origDBName
 	dumpConfig.Verbose = false //default settings
-	dumpConfig.Jobs = 0
+	dumpConfig.Jobs = numJobs
 	util.CleanConfig(dumpConfig)
 	// corresponding restore config
+
+	createTestDB(t, restoredDBName, restoreHost)
 	restoreConfig := &util.Config{}
-	restoreConfig.DbURI = PGConnectURI(restoredDBName)
+	restoreConfig.DbURI = PGConnectURI(restoredDBName, restoreHost)
 	restoreConfig.DumpDir = origDBName
 	restoreConfig.Verbose = true //default settings
-	restoreConfig.Jobs = 0
+	restoreConfig.Jobs = numJobs
 	util.CleanConfig(restoreConfig)
 
 	//make sure we remove the dumpDir at the end no matter what
@@ -159,14 +151,14 @@ func confirmTablesCongruent(t *testing.T, tableSchema pgx.Identifier, tableName 
 	}
 }
 
-func setupOrigDB(t *testing.T, dbName string, tsSchema string, tsVersion string) {
+func setupOrigDB(t *testing.T, dbName string, dbHost string, tsSchema string, tsVersion string) {
 
-	createTestDB(t, dbName)
-	dbURI := PGConnectURI(dbName)
+	createTestDB(t, dbName, dbHost)
+	dbURI := PGConnectURI(dbName, dbHost)
 	err := util.CreateTimescaleAtVer(context.Background(), dbURI, tsSchema, tsVersion)
 	if err != nil {
 		//in tests errors still are fatal (if unexpected) or is there a better pattern?
-		t.Fatal(err)
+		t.Fatalf("Error setting up original database: %v", err)
 	}
 	conn, err := util.GetDBConn(context.Background(), dbURI)
 	if err != nil {
@@ -209,7 +201,7 @@ func setupOrigDB(t *testing.T, dbName string, tsSchema string, tsVersion string)
 
 }
 
-func PGConnectURI(dbName string) string {
+func PGConnectURI(dbName string, pgHost string) string {
 	template := "postgres://%s:%s@%s:%d/%s"
 	return fmt.Sprintf(template, defaultUser, defaultPass, pgHost, pgPort.Int(), dbName)
 }
@@ -232,11 +224,6 @@ func startContainer(ctx context.Context, image string) (testcontainers.Container
 		return nil, err
 	}
 
-	pgHost, err = container.Host(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	pgPort, err = container.MappedPort(ctx, containerPort)
 	if err != nil {
 		return nil, err
@@ -245,11 +232,11 @@ func startContainer(ctx context.Context, image string) (testcontainers.Container
 	return container, nil
 }
 
-func createTestDB(t *testing.T, DBName string) {
+func createTestDB(t *testing.T, DBName string, dbHost string) {
 	if len(*database) == 0 {
 		t.Skip()
 	}
-	conn, err := util.GetDBConn(context.Background(), PGConnectURI(defaultDB))
+	conn, err := util.GetDBConn(context.Background(), PGConnectURI(defaultDB, dbHost))
 	if err != nil {
 		t.Fatal(err)
 	}
