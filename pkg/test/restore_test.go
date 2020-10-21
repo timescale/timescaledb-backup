@@ -161,6 +161,8 @@ func TestBackupRestore(t *testing.T) {
 				t.Fatal("Failed on restore: ", err)
 			}
 			confirmTablesCongruent(t, pgx.Identifier{"public"}, pgx.Identifier{"two_Partitions"}, dumpConfig.DbURI, restoreConfig.DbURI)
+			confirmTablesCongruent(t, pgx.Identifier{"public"}, pgx.Identifier{"insert_test"}, dumpConfig.DbURI, restoreConfig.DbURI)
+			confirmCanStillInsert(t, restoreConfig.DbURI)
 		})
 	}
 }
@@ -204,6 +206,18 @@ func confirmTablesCongruent(t *testing.T, tableSchema pgx.Identifier, tableName 
 	}
 	if restoredRows.Next() {
 		t.Fatalf("Restored table %s.%s has too many rows", quotedTableSchema, quotedTableName)
+	}
+}
+
+func confirmCanStillInsert(t *testing.T, restoredURI string) {
+	restoredConn, err := util.GetDBConn(context.Background(), restoredURI)
+	if err != nil {
+		t.Fatal("Unable to connect to restore db: ", err)
+	}
+	defer restoredConn.Close(context.Background())
+	_, err = restoredConn.Exec(context.Background(), `INSERT INTO public."insert_test"(tstamp, device_id, series_0, series_1) VALUES ('2020-10-04 14:21:08+00', 'dev2', 1.5, 1)`)
+	if err != nil {
+		t.Fatalf("Post-restore insert failure")
 	}
 }
 
@@ -255,6 +269,18 @@ func setupOrigDB(t *testing.T, db dbInfo, tsSchema string, tsVersion string) {
 	mustExec(t, conn, `ALTER TABLE public."two_Partitions" SET (timescaledb.compress=true)`)
 	mustExec(t, conn, `SELECT compress_chunk((SELECT chunk FROM show_chunks('public."two_Partitions"'::regclass) c (chunk) LIMIT 1))`)
 
+	mustExec(t, conn, `CREATE TABLE PUBLIC."insert_test" (
+		tstamp timestamptz NOT NULL,
+		device_id TEXT NOT NULL,
+		series_0 DOUBLE PRECISION NULL, 
+		series_1 DOUBLE PRECISION NULL) ;`)
+
+	mustExec(t, conn, `SELECT * FROM create_hypertable('"public"."insert_test"'::regclass, 'tstamp'::name, chunk_time_interval=>'1 day'::interval);`)
+	mustExec(t, conn, `INSERT INTO public."insert_test"(tstamp, device_id, series_0, series_1) VALUES
+	('2020-10-04 14:21:08+00', 'dev1', 1.5, 1),
+	('2020-10-04 14:21:30+00', 'dev1', 1.5, 2),
+	('2020-10-10 14:21:30+00', 'dev2', 1.5, 1),
+	('2020-10-14 14:21:30+00', 'dev1', 2.5, 3)`)
 }
 
 func PGConnectURI(db dbInfo, useDefault bool) string {
