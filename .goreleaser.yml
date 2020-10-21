@@ -10,10 +10,12 @@ builds:
   - CGO_ENABLED=0
   main: ./cmd/ts-dump/
   id: ts-dump
+  binary: ts-dump
 - env:
   - CGO_ENABLED=0
   main: ./cmd/ts-restore/
   id: ts-restore
+  binary: ts-restore
 
 #don't publish scoop but overwrite the weird names
 scoop:
