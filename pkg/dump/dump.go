@@ -97,17 +97,22 @@ func runDumpAll(cf *util.Config, dumpType string) error {
 	} else {
 		return errors.New("unrecognized pg_dumpall type")
 	}
-
+	config, err := pgx.ParseConfig(cf.DbURI)
+	if err != nil {
+		return fmt.Errorf("invalid connection string: %w", err)
+	}
 	dumpAll := exec.Command(dumpAllPath)
 	dumpAll.Args = append(dumpAll.Args,
 		fmt.Sprintf("--dbname=%s", cf.DbURI),
+		fmt.Sprintf("--database=%s", config.Config.Database), // tells pg_dumpall to actually connect to that database to do things
 		fmt.Sprintf("--file=%s", dumpPath),
+		"--no-role-passwords", //dump roles without passwords, will have to have folks reset passwords for now, potentially add flag in future, but doesn't work on cloud etc as it needs access to pg_authid
 		dumpType)
 	dumpAll.Stdout = os.Stdout
 	dumpAll.Stderr = os.Stderr
 	return dumpAll.Run()
-
 }
+
 func getTimescaleInfo(dbURI string) (util.TsInfo, error) {
 	info := util.TsInfo{}
 
