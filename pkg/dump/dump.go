@@ -52,9 +52,7 @@ func DoDump(cf *util.Config) error {
 	if cf.Jobs > 0 {
 		dump.Args = append(dump.Args, fmt.Sprintf("--jobs=%d", cf.Jobs))
 	}
-	dump.Stdout = os.Stdout
-	dump.Stderr = os.Stderr
-	err = dump.Run()
+	err = util.RunCommandAndFilterOutput(dump, os.Stdout, os.Stderr, true)
 	if err != nil {
 		return fmt.Errorf("pg_dump run failed with: %w", err)
 	}
