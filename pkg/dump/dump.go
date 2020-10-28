@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/ts-dump-restore/pkg/util"
@@ -41,6 +42,17 @@ func DoDump(cf *util.Config) error {
 		return fmt.Errorf("Error writing Timescale info %w", err)
 	}
 
+	//We need to use pg_dumpall to dump roles and tablespaces, these may be necessary to
+	//do a restore later, so best to have them around.
+	err = runDumpAll(cf, "roles")
+	if err != nil {
+		return fmt.Errorf("Error dumping roles %w", err)
+	}
+	err = runDumpAll(cf, "tablespaces")
+	if err != nil {
+		return fmt.Errorf("Error dumping tablespaces %w", err)
+	}
+
 	dump := exec.Command(dumpPath)
 	dump.Args = append(dump.Args,
 		fmt.Sprintf("--dbname=%s", cf.DbURI),
@@ -70,6 +82,32 @@ func createInfoFile(cf *util.Config) (*os.File, error) {
 	return file, err
 }
 
+func runDumpAll(cf *util.Config, dumpType string) error {
+	//For now, we are going to assume that pg_dumpall is the same version as pg_dump and
+	//not print it out or anything.
+	dumpAllPath, err := exec.LookPath("pg_dumpall")
+	if err != nil {
+		return errors.New("pg_dumpall not found, please make sure it is installed")
+	}
+	dumpPath := filepath.Join(cf.DumpDir, dumpType+".sql")
+	if dumpType == "roles" {
+		dumpType = "--roles-only"
+	} else if dumpType == "tablespaces" {
+		dumpType = "--tablespaces-only"
+	} else {
+		return errors.New("unrecognized pg_dumpall type")
+	}
+
+	dumpAll := exec.Command(dumpAllPath)
+	dumpAll.Args = append(dumpAll.Args,
+		fmt.Sprintf("--dbname=%s", cf.DbURI),
+		fmt.Sprintf("--file=%s", dumpPath),
+		dumpType)
+	dumpAll.Stdout = os.Stdout
+	dumpAll.Stderr = os.Stderr
+	return dumpAll.Run()
+
+}
 func getTimescaleInfo(dbURI string) (util.TsInfo, error) {
 	info := util.TsInfo{}
 
