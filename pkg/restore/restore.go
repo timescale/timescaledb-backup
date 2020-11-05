@@ -9,12 +9,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"strings"
-	"sync"
 
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/ts-dump-restore/pkg/util"
@@ -71,13 +68,13 @@ func DoRestore(cf *util.Config) error {
 	}
 	// Now just the pre-data section
 	restore := getRestoreCmd(restorePath, cf.PgDumpDir, baseArgs, "--section=pre-data", "--single-transaction")
-	err = runCommandAndFilterOutput(restore, os.Stdout, os.Stderr)
+	err = util.RunCommandAndFilterOutput(restore, os.Stdout, os.Stderr, true)
 	if err != nil {
 		return fmt.Errorf("pg_restore run failed in pre-data section: %w", err)
 	}
 	//Now data for just the _timescaledb_catalog and _timescaledb_config  schemas
 	restore = getRestoreCmd(restorePath, cf.PgDumpDir, baseArgs, "--section=data", "--schema=_timescaledb_catalog", "--schema=_timescaledb_config")
-	err = runCommandAndFilterOutput(restore, os.Stdout, os.Stderr)
+	err = util.RunCommandAndFilterOutput(restore, os.Stdout, os.Stderr, true)
 	if err != nil {
 		return fmt.Errorf("pg_restore run failed while restoring _timescaledb_catalog: %w", err)
 	}
@@ -87,14 +84,14 @@ func DoRestore(cf *util.Config) error {
 	}
 	//Now the data for everything else
 	restore = getRestoreCmd(restorePath, cf.PgDumpDir, baseArgs, "--section=data", "--exclude-schema=_timescaledb_catalog", "--exclude-schema=_timescaledb_config")
-	err = runCommandAndFilterOutput(restore, os.Stdout, os.Stderr)
+	err = util.RunCommandAndFilterOutput(restore, os.Stdout, os.Stderr, true)
 	if err != nil {
 		return fmt.Errorf("pg_restore run failed while restoring user data: %w", err)
 	}
 
 	//Now the full post-data run, which should also be in parallel
 	restore = getRestoreCmd(restorePath, cf.PgDumpDir, baseArgs, "--section=post-data")
-	err = runCommandAndFilterOutput(restore, os.Stdout, os.Stderr)
+	err = util.RunCommandAndFilterOutput(restore, os.Stdout, os.Stderr, true)
 	if err != nil {
 		return fmt.Errorf("pg_restore run failed during post-data step: %w", err)
 	}
@@ -108,60 +105,6 @@ func getRestoreCmd(restorePath string, dumpDir string, baseArgs []string, addlAr
 	restore.Args = append(restore.Args, addlArgs...)
 	restore.Args = append(restore.Args, dumpDir) // the location of the dump has to be the last argument
 	return restore
-}
-
-func runCommandAndFilterOutput(cmd *exec.Cmd, stdout io.Writer, stderr io.Writer, filters ...string) error {
-	stdoutIn, _ := cmd.StdoutPipe()
-	stderrIn, _ := cmd.StderrPipe()
-
-	err := cmd.Start()
-	if err != nil {
-		return fmt.Errorf("cmd.Start() failed with '%w'", err)
-	}
-
-	var errStdout, errStderr error
-	// cmd.Wait() should be called only after we finish reading
-	// from stdoutIn and stderrIn.
-	// wg ensures that we finish
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		errStdout = writeAndFilterOutput(stdoutIn, stdout, filters...)
-		wg.Done()
-	}()
-
-	errStderr = writeAndFilterOutput(stderrIn, stderr, filters...)
-	wg.Wait()
-	err = cmd.Wait()
-	if err != nil {
-		return fmt.Errorf("cmd.Run() failed with '%w'", err)
-	}
-	if errStdout != nil || errStderr != nil {
-		return fmt.Errorf("failed to capture output: '%w'", err)
-	}
-	return err
-}
-
-func writeAndFilterOutput(readIn io.Reader, scanOut io.Writer, filters ...string) error {
-	scanIn := bufio.NewScanner(readIn)
-	var err error
-	for scanIn.Scan() {
-		stringMatch := false
-
-		for _, filter := range filters {
-			if strings.Contains(scanIn.Text(), filter) {
-				stringMatch = true
-				break
-			}
-		}
-		if !stringMatch {
-			_, err = fmt.Fprintln(scanOut, scanIn.Text())
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return err
 }
 
 //makeRestoreTOC creates a filtered table of contents in a temp file to use for
@@ -184,7 +127,7 @@ func makeRestoreTOC(restorePath string, dumpDir string, TOCFile *os.File) error 
 	restore.Args = append(restore.Args, dumpDir)
 	restore.Args = append(restore.Args, "--list")
 	TOCWriter := bufio.NewWriter(TOCFile)
-	return runCommandAndFilterOutput(restore, TOCWriter, os.Stderr, "COMMENT - EXTENSION timescaledb")
+	return util.RunCommandAndFilterOutput(restore, TOCWriter, os.Stderr, false, "COMMENT - EXTENSION timescaledb")
 }
 
 func getRestoreVersion() (string, error) {

@@ -4,11 +4,17 @@
 package util
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"os/exec"
 	"path/filepath"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v4"
 )
@@ -104,6 +110,66 @@ func CreateTimescaleAtVer(dbContext context.Context, dbURI string, targetSchema 
 	}
 	if info.TsSchema != targetSchema || info.TsVersion != targetVersion {
 		return errors.New("TimescaleDB extension created in incorrect schema or at incorrect version, please drop the extension and restart the restore")
+	}
+	return err
+}
+
+//RunCommandAndFilterOutput runs a specified command (cmd), and writes output to stdout and stderr after applying
+//filters, if prepend time is specified, then it also prepends the time that an output was produced.
+func RunCommandAndFilterOutput(cmd *exec.Cmd, stdout io.Writer, stderr io.Writer, prependTime bool, filters ...string) error {
+	stdoutIn, _ := cmd.StdoutPipe()
+	stderrIn, _ := cmd.StderrPipe()
+
+	err := cmd.Start()
+	if err != nil {
+		return fmt.Errorf("cmd.Start() failed with '%w'", err)
+	}
+
+	var errStdout, errStderr error
+	// cmd.Wait() should be called only after we finish reading
+	// from stdoutIn and stderrIn.
+	// wg ensures that we finish
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		errStdout = writeAndFilterOutput(stdoutIn, stdout, prependTime, filters...)
+		wg.Done()
+	}()
+
+	errStderr = writeAndFilterOutput(stderrIn, stderr, prependTime, filters...)
+	wg.Wait()
+	err = cmd.Wait()
+	if err != nil {
+		return fmt.Errorf("cmd.Run() failed with '%w'", err)
+	}
+	if errStdout != nil || errStderr != nil {
+		return fmt.Errorf("failed to capture output: '%w'", err)
+	}
+	return err
+}
+
+func writeAndFilterOutput(readIn io.Reader, scanOut io.Writer, prependTime bool, filters ...string) error {
+	scanIn := bufio.NewScanner(readIn)
+	var err error
+	for scanIn.Scan() {
+		stringMatch := false
+
+		for _, filter := range filters {
+			if strings.Contains(scanIn.Text(), filter) {
+				stringMatch = true
+				break
+			}
+		}
+		if !stringMatch {
+			if prependTime {
+				_, err = fmt.Fprintln(scanOut, time.Now().Format("2006/01/02 15:04:05 ")+scanIn.Text())
+			} else {
+				_, err = fmt.Fprintln(scanOut, scanIn.Text())
+			}
+			if err != nil {
+				return err
+			}
+		}
 	}
 	return err
 }
