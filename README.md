@@ -73,7 +73,8 @@ version, we recommend restoring only to an empty database.  You will need to pro
 
 Optional parameters:
    - `--jobs` Sets the number of jobs to run for the restore, by default it is set to 4 and will run in parallel mode during the sections[^1] that are able to be parallelized. Set to 0 to disable parallelism.
-   - `--verbose` Determines whether verbose output will be provided from `pg_restore`. Defaults to true.
+   - `--verbose` Provide verbose output from `pg_restore`. Defaults to true.
+   - `--do-update` Update the TimescaleDB version to the latest default version immediately following the restore.[^2] Defaults to true.
 
 As an example, let's suppose I have two `postgres` clusters running on my machine, perhaps on versions 11 on port 5432 and 12 on 5433 and I wish to dump and restore in order to upgrade between versions: 
 I would run `ts-dump --db-URI=postgresql://postgres:pwd1@localhost:5432/tsdb --dump-dir=~/dumps/dump1 --verbose --jobs=2`
@@ -92,3 +93,9 @@ include.
    we first perform a pre-data restore, then restore the data for the catalog, then in
    parallel perform the data section for everything else and the post-data section for
    everything. 
+
+[^2]: This requires that you have the .so for the version you are restoring from and the
+   version that you will update to. For instance, if your dump is from TimescaleDB 1.6.2
+   and the latest version is TimescaleDB 1.7.4, you need the .so from 1.6.2 available to
+   restore to, and then it will update to 1.7.4 following the restore. Our default
+   packages include several older versions to enable updates. 
