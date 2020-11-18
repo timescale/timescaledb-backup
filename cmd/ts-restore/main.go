@@ -16,7 +16,7 @@ func main() {
 	config = util.RegisterCommonConfigFlags(config)
 	// for restore we want to default to verbose output, it gives good information about how the restore is proceeding
 	flag.BoolVar(&config.Verbose, "verbose", true, "specifies whether verbose output is requested, default true")
-
+	flag.BoolVar(&config.DoUpdate, "do-update", true, "set to false to leave TimescaleDB at the dumped version, defaults to true, which upgrades to default installed")
 	flag.Parse()
 	config, err := util.CleanConfig(config)
 	if err != nil {

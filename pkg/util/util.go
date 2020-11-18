@@ -27,6 +27,7 @@ type Config struct {
 	TsInfoFileName string
 	Verbose        bool
 	Jobs           int
+	DoUpdate       bool // whether to do an update after restoring.
 }
 
 //TsInfo holds information about the Timescale installation

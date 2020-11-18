@@ -64,55 +64,71 @@ func TestBackupRestore(t *testing.T) {
 		restoreImage string
 		tsVersion    string
 		numJobs      int
+		doUpdate     bool
 	}{
 		{
 			desc:         "pg-11-parallel",
-			dumpImage:    "timescale/timescaledb:latest-pg11",
-			restoreImage: "timescale/timescaledb:latest-pg11",
+			dumpImage:    "timescale/timescaledb:1.7.2-pg11",
+			restoreImage: "timescale/timescaledb:1.7.2-pg11",
 			tsVersion:    "1.7.1",
 			numJobs:      4,
+			doUpdate:     false,
 		},
 		{
 			desc:         "pg-11-non-parallel",
-			dumpImage:    "timescale/timescaledb:latest-pg11",
-			restoreImage: "timescale/timescaledb:latest-pg11",
+			dumpImage:    "timescale/timescaledb:1.7.2-pg11",
+			restoreImage: "timescale/timescaledb:1.7.2-pg11",
 			tsVersion:    "1.7.1",
 			numJobs:      0,
+			doUpdate:     false,
 		},
 		{
 			desc:         "pg-12-parallel",
-			dumpImage:    "timescale/timescaledb:latest-pg12",
-			restoreImage: "timescale/timescaledb:latest-pg12",
+			dumpImage:    "timescale/timescaledb:1.7.2-pg12",
+			restoreImage: "timescale/timescaledb:1.7.2-pg12",
 			tsVersion:    "1.7.1",
 			numJobs:      4,
+			doUpdate:     false,
 		},
 		{
 			desc:         "pg-11-to-12",
-			dumpImage:    "timescale/timescaledb:latest-pg11",
-			restoreImage: "timescale/timescaledb:latest-pg12",
+			dumpImage:    "timescale/timescaledb:1.7.2-pg11",
+			restoreImage: "timescale/timescaledb:1.7.2-pg12",
 			tsVersion:    "1.7.1",
 			numJobs:      4,
+			doUpdate:     false,
 		},
 		{
 			desc:         "pg-11-older-ts-1.6.1",
-			dumpImage:    "timescale/timescaledb:latest-pg11",
-			restoreImage: "timescale/timescaledb:latest-pg11",
+			dumpImage:    "timescale/timescaledb:1.7.2-pg11",
+			restoreImage: "timescale/timescaledb:1.7.2-pg11",
 			tsVersion:    "1.6.1",
 			numJobs:      4,
+			doUpdate:     false,
 		},
 		{
 			desc:         "pg-10-parallel",
-			dumpImage:    "timescale/timescaledb:latest-pg10",
-			restoreImage: "timescale/timescaledb:latest-pg10",
-			tsVersion:    "1.7.1",
+			dumpImage:    "timescale/timescaledb:1.7.2-pg10",
+			restoreImage: "timescale/timescaledb:1.7.2-pg10",
+			tsVersion:    "1.7.2",
 			numJobs:      4,
+			doUpdate:     false,
 		},
 		{
 			desc:         "pg-10-11-upgrade-ts-1.6.1",
-			dumpImage:    "timescale/timescaledb:latest-pg10",
-			restoreImage: "timescale/timescaledb:latest-pg11",
+			dumpImage:    "timescale/timescaledb:1.7.2-pg10",
+			restoreImage: "timescale/timescaledb:1.7.2-pg11",
 			tsVersion:    "1.6.1",
 			numJobs:      4,
+			doUpdate:     false,
+		},
+		{
+			desc:         "pg-12-update",
+			dumpImage:    "timescale/timescaledb:1.7.4-pg12",
+			restoreImage: "timescale/timescaledb:1.7.4-pg12",
+			tsVersion:    "1.7.1",
+			numJobs:      4,
+			doUpdate:     true,
 		},
 	}
 	for _, c := range cases {
@@ -148,6 +164,7 @@ func TestBackupRestore(t *testing.T) {
 			restoreConfig.DumpDir = fmt.Sprintf("%s.%d", dumpDb.dbName, dumpDb.port.Int()) //dump dir is from dump not from restore
 			restoreConfig.Verbose = true                                                   //default settings
 			restoreConfig.Jobs = c.numJobs
+			restoreConfig.DoUpdate = c.doUpdate
 			util.CleanConfig(restoreConfig)
 
 			//make sure we remove the dumpDir at the end no matter what

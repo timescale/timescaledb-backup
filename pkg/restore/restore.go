@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/jackc/pgx/v4"
 	"github.com/timescale/ts-dump-restore/pkg/util"
 )
 
@@ -95,7 +94,16 @@ func DoRestore(cf *util.Config) error {
 	if err != nil {
 		return fmt.Errorf("pg_restore run failed during post-data step: %w", err)
 	}
+
+	//Now perform the extension update if we're doing that.
+	if cf.DoUpdate {
+		err = doUpdate(cf.DbURI)
+		if err != nil {
+			return fmt.Errorf("pg_restore run failed while updating extension: %w", err)
+		}
+	}
 	return err
+
 }
 
 func getRestoreCmd(restorePath string, dumpDir string, baseArgs []string, addlArgs ...string) *exec.Cmd {
@@ -202,18 +210,35 @@ func postRestoreTimescale(dbURI string, tsInfo util.TsInfo) error {
 	if !pr {
 		return errors.New("post restore function failed")
 	}
+	return err
+}
 
-	// Confirm that no one pulled a fast one on us, and that we're at the right extension version
-	info := util.TsInfo{}
-	err = conn.QueryRow(context.Background(), "SELECT e.extversion, n.nspname FROM pg_extension e INNER JOIN pg_namespace n ON e.extnamespace = n.oid WHERE e.extname='timescaledb'").Scan(&info.TsVersion, &info.TsSchema)
+func doUpdate(dbURI string) error {
+
+	conn, err := util.GetDBConn(context.Background(), dbURI)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return errors.New("could not confirm creation of TimescaleDB extension")
-		}
 		return err
 	}
-	if info.TsSchema != tsInfo.TsSchema || info.TsVersion != tsInfo.TsVersion {
-		return errors.New("TimescaleDB extension created in incorrect schema or at incorrect version, please drop the extension and restart the restore")
+	defer conn.Close(context.Background())
+	_, err = conn.Exec(context.Background(), "ALTER EXTENSION timescaledb UPDATE ")
+	if err != nil {
+		return fmt.Errorf("failed to update extension version: %w", err)
+	}
+	conn.Close(context.Background())                          // close the alter extension connection
+	conn2, err := util.GetDBConn(context.Background(), dbURI) // open a new one to confirm we can make a connection
+	if err != nil {
+		return fmt.Errorf("failed to connect after updating extension:%w", err)
+	}
+	defer conn2.Close(context.Background())
+
+	// confirm that the installed version now matches the default version
+	var vm bool
+	err = conn2.QueryRow(context.Background(), "SELECT installed_version = default_version FROM pg_catalog.pg_available_extensions WHERE name = 'timescaledb'").Scan(&vm)
+	if err != nil {
+		return err
+	}
+	if !vm {
+		return errors.New("TimescaleDB extension was not updated to the default version")
 	}
 	return err
 }
