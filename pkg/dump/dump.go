@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/ts-dump-restore/pkg/util"
@@ -44,13 +45,23 @@ func DoDump(cf *util.Config) error {
 
 	//We need to use pg_dumpall to dump roles and tablespaces, these may be necessary to
 	//do a restore later, so best to have them around.
-	err = runDumpAll(cf, "roles")
-	if err != nil {
-		return fmt.Errorf("Error dumping roles %w", err)
+	if cf.DumpRoles {
+		if cf.Verbose {
+			fmt.Println(time.Now().Format("2006/01/02 15:04:05 ") + "Dumping roles")
+		}
+		err = runDumpAll(cf, "roles")
+		if err != nil {
+			return fmt.Errorf("Error dumping roles %w", err)
+		}
 	}
-	err = runDumpAll(cf, "tablespaces")
-	if err != nil {
-		return fmt.Errorf("Error dumping tablespaces %w", err)
+	if cf.DumpTablespaces {
+		if cf.Verbose {
+			fmt.Println(time.Now().Format("2006/01/02 15:04:05 ") + "Dumping tablespaces")
+		}
+		err = runDumpAll(cf, "tablespaces")
+		if err != nil {
+			return fmt.Errorf("Error dumping tablespaces %w", err)
+		}
 	}
 
 	dump := exec.Command(dumpPath)

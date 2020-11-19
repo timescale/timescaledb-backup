@@ -153,8 +153,10 @@ func TestBackupRestore(t *testing.T) {
 			dumpConfig := &util.Config{}
 			dumpConfig.DbURI = PGConnectURI(dumpDb, false)
 			dumpConfig.DumpDir = fmt.Sprintf("%s.%d", dumpDb.dbName, dumpDb.port.Int())
-			dumpConfig.Verbose = false //default settings
 			dumpConfig.Jobs = c.numJobs
+			dumpConfig.Verbose = false //default settings
+			dumpConfig.DumpRoles = true
+			dumpConfig.DumpTablespaces = true
 			util.CleanConfig(dumpConfig)
 			// corresponding restore config
 
