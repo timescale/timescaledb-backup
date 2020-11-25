@@ -157,6 +157,9 @@ func TestBackupRestore(t *testing.T) {
 			dumpConfig.Verbose = false //default settings
 			dumpConfig.DumpRoles = true
 			dumpConfig.DumpTablespaces = true
+			dumpConfig.DumpPauseJobs = true
+			dumpConfig.DumpPauseUDAs = true
+			dumpConfig.DumpJobFinishTimeout = 100 //set a lower timeout for testing
 			util.CleanConfig(dumpConfig)
 			// corresponding restore config
 

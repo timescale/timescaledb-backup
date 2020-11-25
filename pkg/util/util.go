@@ -21,15 +21,18 @@ import (
 
 //Config holds configuration needed for the dump/restore commands to work properly
 type Config struct {
-	DbURI           string
-	DumpDir         string
-	PgDumpDir       string
-	TsInfoFileName  string
-	Verbose         bool
-	Jobs            int
-	DoUpdate        bool // whether to do an update after restoring.
-	DumpRoles       bool
-	DumpTablespaces bool
+	DbURI                string
+	DumpDir              string
+	PgDumpDir            string
+	TsInfoFileName       string
+	Verbose              bool
+	Jobs                 int
+	DoUpdate             bool // whether to do an update after restoring.
+	DumpRoles            bool
+	DumpTablespaces      bool
+	DumpPauseJobs        bool
+	DumpJobFinishTimeout int
+	DumpPauseUDAs        bool
 }
 
 //TsInfo holds information about the Timescale installation
