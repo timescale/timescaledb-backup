@@ -59,7 +59,7 @@ Optional parameters:
    - `--dump-roles` Determines whether to use `pg_dumpall` to dump roles (without password information) before running the dump. Can be useful in order to restore permissions on tables etc. Defaults to true.
    - `--dump-tablespaces` Determines whether to use `pg_dumpall` to dump tablespaces before running the dump. Can be useful if using multiple tablespaces and in restoring tables to the correct tablespaces. Defaults to true. 
    - `--dump-pause-jobs` Determines whether to pause background jobs that could disrupt a parallel dump process by performing DDL during the dump. Defaults to true, only affects parallel dumps. 
-   - `--dump-pause-UDAs` Determines whether to pause user defined actions (available in Timescale 2.0+) when pausing jobs.Defaults to true, only affects parallel dumps where jobs are being paused.
+   - `--dump-pause-UDAs` Determines whether to pause user defined actions (available in Timescale 2.0+) when pausing jobs. Defaults to true, only affects parallel dumps where jobs are being paused.
 	- `--dump-job-finish-timeout` The number of seconds to wait for jobs which may perform DDL to finish before timing out. Defaults to 600 (10 minutes), set to -1 to not wait on jobs to finish. This only affects parallel dumps where jobs are being paused. 
 	
 	
