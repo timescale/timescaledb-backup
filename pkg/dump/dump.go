@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v4"
@@ -19,6 +20,25 @@ import (
 
 // DoDump takes a config and performs a database dump
 func DoDump(cf *util.Config) error {
+	// start moving jobs, we can do other things while waiting for them to stop potentially
+	var wg sync.WaitGroup
+	cleanup := make(chan bool)
+	jobsStopped := make(chan bool)
+	if cf.DumpPauseJobs && cf.Jobs > 0 {
+		wg.Add(1)
+		go JobMover(cf.DbURI, &wg, jobsStopped, cleanup, cf.DumpPauseUDAs, cf.Verbose)
+		defer jobMoverStop(&wg, cleanup)
+		//now we need to wait and make sure our jobs are stopped
+		if cf.DumpJobFinishTimeout >= 0 {
+			timer := time.NewTimer(time.Duration(cf.DumpJobFinishTimeout) * time.Second)
+			select {
+			case <-jobsStopped:
+				break
+			case timeout := <-timer.C:
+				return fmt.Errorf("%s timed out waiting for jobs to be rescheduled, exiting", timeout)
+			}
+		}
+	}
 	dumpPath, err := exec.LookPath("pg_dump")
 	if err != nil {
 		return errors.New("pg_dump not found, please make sure it is installed")
@@ -63,7 +83,6 @@ func DoDump(cf *util.Config) error {
 			return fmt.Errorf("Error dumping tablespaces %w", err)
 		}
 	}
-
 	dump := exec.Command(dumpPath)
 	dump.Args = append(dump.Args,
 		fmt.Sprintf("--dbname=%s", cf.DbURI),
@@ -75,6 +94,7 @@ func DoDump(cf *util.Config) error {
 	if cf.Jobs > 0 {
 		dump.Args = append(dump.Args, fmt.Sprintf("--jobs=%d", cf.Jobs))
 	}
+
 	err = util.RunCommandAndFilterOutput(dump, os.Stdout, os.Stderr, true)
 	if err != nil {
 		return fmt.Errorf("pg_dump run failed with: %w", err)
@@ -82,11 +102,14 @@ func DoDump(cf *util.Config) error {
 	return err
 }
 
+func jobMoverStop(wg *sync.WaitGroup, cleanup chan<- bool) {
+	close(cleanup)
+	wg.Wait()
+}
+
 func createInfoFile(cf *util.Config) (*os.File, error) {
-	//Are these perms correct?
 	err := os.Mkdir(string(cf.DumpDir), 0700)
 	if err != nil {
-		//is this what I should be returning in this case? or should I just throw the error here?
 		return nil, err
 	}
 	file, err := os.Create(cf.TsInfoFileName)
