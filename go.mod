@@ -1,4 +1,4 @@
-module github.com/timescale/ts-dump-restore
+module github.com/timescale/timescaledb-backup
 
 go 1.14
 
