@@ -1,4 +1,4 @@
-module github.com/timescale/timescaledb-backup
+module github.com/mccarthysean/timescaledb-backup
 
 go 1.14
 
