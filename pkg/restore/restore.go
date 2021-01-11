@@ -66,7 +66,7 @@ func DoRestore(cf *util.Config) error {
 		baseArgs = append(baseArgs, "--verbose")
 	}
 	// Now just the pre-data section
-	restore := getRestoreCmd(restorePath, cf.PgDumpDir, baseArgs, "--section=pre-data", "--single-transaction")
+	restore := getRestoreCmd(restorePath, cf.PgDumpDir, baseArgs, "--section=pre-data")
 	err = util.RunCommandAndFilterOutput(restore, os.Stdout, os.Stderr, true)
 	if err != nil {
 		return fmt.Errorf("pg_restore run failed in pre-data section: %w", err)
