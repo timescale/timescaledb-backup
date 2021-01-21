@@ -7,8 +7,8 @@ import (
 	"flag"
 	"log"
 
-	"github.com/timescale/ts-dump-restore/pkg/dump"
-	"github.com/timescale/ts-dump-restore/pkg/util"
+	"github.com/timescale/timescaledb-backup/pkg/dump"
+	"github.com/timescale/timescaledb-backup/pkg/util"
 )
 
 func main() {

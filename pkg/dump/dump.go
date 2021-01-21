@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4"
-	"github.com/timescale/ts-dump-restore/pkg/util"
+	"github.com/timescale/timescaledb-backup/pkg/util"
 )
 
 // DoDump takes a config and performs a database dump

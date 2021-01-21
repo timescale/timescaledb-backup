@@ -13,7 +13,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/timescale/ts-dump-restore/pkg/util"
+	"github.com/timescale/timescaledb-backup/pkg/util"
 )
 
 // DoRestore takes a config and performs a pg_restore with the proper wrappings for Timescale
