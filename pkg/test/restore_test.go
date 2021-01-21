@@ -130,6 +130,30 @@ func TestBackupRestore(t *testing.T) {
 			numJobs:      4,
 			doUpdate:     true,
 		},
+		{
+			desc:         "pg-12-update-2.0.0",
+			dumpImage:    "timescale/timescaledb:1.7.4-pg12",
+			restoreImage: "timescale/timescaledb:2.0.0-pg12",
+			tsVersion:    "1.7.1",
+			numJobs:      4,
+			doUpdate:     true,
+		},
+		{
+			desc:         "pg-12-2.0.0",
+			dumpImage:    "timescale/timescaledb:2.0.0-pg12",
+			restoreImage: "timescale/timescaledb:2.0.0-pg12",
+			tsVersion:    "2.0.0",
+			numJobs:      4,
+			doUpdate:     false,
+		},
+		{
+			desc:         "pg-11-12-upgrade-ts-2.0.0",
+			dumpImage:    "timescale/timescaledb:2.0.0-pg11",
+			restoreImage: "timescale/timescaledb:2.0.0-pg12",
+			tsVersion:    "2.0.0",
+			numJobs:      4,
+			doUpdate:     false,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.desc, func(t *testing.T) {
