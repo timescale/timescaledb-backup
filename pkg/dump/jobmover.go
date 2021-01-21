@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4"
-	"github.com/timescale/ts-dump-restore/pkg/util"
+	"github.com/timescale/timescaledb-backup/pkg/util"
 )
 
 // Compression jobs (or any other sort of job that performs DDL on a chunk such as
