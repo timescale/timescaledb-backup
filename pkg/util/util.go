@@ -125,7 +125,6 @@ func CreateTimescaleAtVer(dbContext context.Context, dbURI string, targetSchema 
 func RunCommandAndFilterOutput(cmd *exec.Cmd, stdout io.Writer, stderr io.Writer, prependTime bool, filters ...string) error {
 	stdoutIn, _ := cmd.StdoutPipe()
 	stderrIn, _ := cmd.StderrPipe()
-
 	err := cmd.Start()
 	if err != nil {
 		return fmt.Errorf("cmd.Start() failed with '%w'", err)
@@ -158,6 +157,10 @@ func writeAndFilterOutput(readIn io.Reader, scanOut io.Writer, prependTime bool,
 	scanIn := bufio.NewScanner(readIn)
 	var err error
 	for scanIn.Scan() {
+		err = scanIn.Err()
+		if err != nil {
+			return err
+		}
 		stringMatch := false
 
 		for _, filter := range filters {

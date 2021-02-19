@@ -135,7 +135,11 @@ func makeRestoreTOC(restorePath string, dumpDir string, TOCFile *os.File) error 
 	restore.Args = append(restore.Args, dumpDir)
 	restore.Args = append(restore.Args, "--list")
 	TOCWriter := bufio.NewWriter(TOCFile)
-	return util.RunCommandAndFilterOutput(restore, TOCWriter, os.Stderr, false, "COMMENT - EXTENSION timescaledb")
+	err := util.RunCommandAndFilterOutput(restore, TOCWriter, os.Stderr, false, "COMMENT - EXTENSION timescaledb")
+	if err != nil {
+		return err
+	}
+	return TOCWriter.Flush()
 }
 
 func getRestoreVersion() (string, error) {
