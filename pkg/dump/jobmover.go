@@ -153,7 +153,7 @@ func jobMoverSQL(tsMajorVersion int, pauseUDAs bool) (runningJobsSQL string, mov
 		runningJobsSQL = `SELECT string_agg(job_id::text, ', ') 
 		FROM timescaledb_information.policy_stats 
 		WHERE last_finish ='-infinity' AND next_start = '-infinity' 
-		AND job_type IN ('compress_chunks', 'reorder') 
+		AND job_type IN ('compress_chunks', 'reorder', 'continuous_aggregate') 
 		HAVING string_agg(job_id::text, ', ') IS NOT NULL`
 
 		moveSQL = `SELECT t.job_id, prev_start FROM 
@@ -171,9 +171,9 @@ func jobMoverSQL(tsMajorVersion int, pauseUDAs bool) (runningJobsSQL string, mov
 
 		// Not a huge fan of finding the job types this way, but I'm not sure of a better one.
 		if pauseUDAs {
-			jobWhere = "(application_name LIKE 'Compression%' OR application_name LIKE 'Reorder%' OR application_name LIKE 'User-Defined%')"
+			jobWhere = "(application_name LIKE 'Compression%' OR application_name LIKE 'Reorder%' OR application_name LIKE 'Refresh Continuous%' OR application_name LIKE 'User-Defined%')"
 		} else {
-			jobWhere = "(application_name LIKE 'Compression%' OR application_name LIKE 'Reorder%')"
+			jobWhere = "(application_name LIKE 'Compression%' OR application_name LIKE 'Reorder%' OR application_name LIKE 'Refresh Continuous%')"
 		}
 		// Note that jobs with next_start = -infinity and last_run_status = NULL and job_status = 'Scheduled'
 		// are the jobs currently running. Unfortunately, there's no other indication of this, and it's
