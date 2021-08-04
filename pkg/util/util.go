@@ -33,6 +33,8 @@ type Config struct {
 	DumpPauseJobs        bool
 	DumpJobFinishTimeout int
 	DumpPauseUDAs        bool
+	PGDumpFlags          []string
+	PGRestoreFlags       []string
 }
 
 //TsInfo holds information about the Timescale installation
