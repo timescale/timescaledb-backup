@@ -5,7 +5,9 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
+	"os"
 
 	"github.com/timescale/timescaledb-backup/pkg/dump"
 	"github.com/timescale/timescaledb-backup/pkg/util"
@@ -14,6 +16,13 @@ import (
 func main() {
 	config := &util.Config{}
 	config = util.RegisterCommonConfigFlags(config)
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
+		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "  -- <pg_dump options>\n        other options to pass to pg_dump, for example: --no-comments\n")
+	}
+
 	// for dump we want to default to non-verbose output, as it is a bit too verbose
 	flag.BoolVar(&config.Verbose, "verbose", false, "specifies whether verbose output is requested, default false")
 	flag.BoolVar(&config.DumpRoles, "dump-roles", true, "specifies whether to use pg_dumpall to dump roles to a file, default true")
@@ -22,6 +31,7 @@ func main() {
 	flag.IntVar(&config.DumpJobFinishTimeout, "dump-job-finish-timeout", 600, "number of seconds to wait for possibly DDL performing jobs to finish before timing out, default 600 (10 minutes), set to -1 to not wait on jobs")
 	flag.BoolVar(&config.DumpPauseUDAs, "dump-pause-UDAs", true, "pause user defined actions (only for Timescale 2.0+) when pausing jobs, default true")
 	flag.Parse()
+	config.PGDumpFlags = flag.Args()
 	config, err := util.CleanConfig(config)
 	if err != nil {
 		log.Fatal(err)

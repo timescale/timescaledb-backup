@@ -84,6 +84,7 @@ func DoDump(cf *util.Config) error {
 		}
 	}
 	dump := exec.Command(dumpPath)
+	dump.Args = append(dump.Args, cf.PGDumpFlags...)
 	dump.Args = append(dump.Args,
 		fmt.Sprintf("--dbname=%s", cf.DbURI),
 		"--format=directory",

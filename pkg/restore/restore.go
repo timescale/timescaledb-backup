@@ -62,6 +62,7 @@ func DoRestore(cf *util.Config) error {
 
 	var baseArgs = []string{fmt.Sprintf("--dbname=%s", cf.DbURI), "--format=directory", fmt.Sprintf("--use-list=%s", TOCFile.Name())}
 
+	baseArgs = append(baseArgs, cf.PGRestoreFlags...)
 	if cf.Verbose {
 		baseArgs = append(baseArgs, "--verbose")
 	}

@@ -32,8 +32,6 @@ type dbInfo struct {
 	defaultPass string
 }
 
-var ()
-
 const (
 	defaultDB   = "postgres"
 	defaultUser = "postgres"
