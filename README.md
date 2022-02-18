@@ -1,4 +1,9 @@
-#timescaledb-backup 
+# timescaledb-backup is no longer maintained
+We recommend using the PostgreSQL tools `pg_dump` and `pg_restore` instead. For more
+information on using these tools with TimescaleDB, please refer to the TimescaleDB 
+[documentation](https://docs.timescale.com/timescaledb/latest/how-to-guides/backup-and-restore/).
+
+## timescaledb-backup 
 
 `timescaledb-backup` is a program for making dumping and restoring a
 [TimescaleDB](//github.com/timescale/timescaledb) database simpler, less error-prone,
